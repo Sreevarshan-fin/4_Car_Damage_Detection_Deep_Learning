@@ -49,6 +49,50 @@ with st.sidebar:
         - Rear Normal  
         """
     )
+    st.success("🟢 Model Loaded")
+
+# --------------------------------------------------
+# Damage Localization (Bounding Box - Demo)
+# --------------------------------------------------
+def draw_damage_box(image_path):
+    img = cv2.imread(image_path)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    # Edge detection
+    edges = cv2.Canny(gray, 50, 150)
+
+    # Find contours
+    contours, _ = cv2.findContours(
+        edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
+
+    if not contours:
+        return img
+
+    # Largest contour assumed as damage area
+    largest_contour = max(contours, key=cv2.contourArea)
+    x, y, w, h = cv2.boundingRect(largest_contour)
+
+    # Draw bounding box
+    cv2.rectangle(
+        img,
+        (x, y),
+        (x + w, y + h),
+        (0, 0, 255),
+        2
+    )
+
+    cv2.putText(
+        img,
+        "Detected Damage Area",
+        (x, y - 10),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.6,
+        (0, 0, 255),
+        2
+    )
+
+    return img
 
 # --------------------------------------------------
 # Upload Type Selector
@@ -80,6 +124,11 @@ if upload_type == "📷 Image":
             prediction = predict(image_path)
 
         st.success(f"✅ **Predicted Damage Class:** {prediction}")
+
+        # Damage localization
+        boxed_image = draw_damage_box(image_path)
+        st.markdown("### 📍 Damage Localization")
+        st.image(boxed_image, channels="BGR", use_container_width=True)
 
         os.remove(image_path)
 
@@ -113,13 +162,18 @@ if upload_type == "🎥 Video":
             frame_path = "temp_frame.jpg"
             cv2.imwrite(frame_path, frame)
 
-            st.markdown("### 🖼️ Extracted Frame (Used for Prediction)")
+            st.markdown("### 🖼️ Extracted Frame")
             st.image(frame_path, use_container_width=True)
 
             with st.spinner("🔍 Analyzing video frame..."):
                 prediction = predict(frame_path)
 
             st.success(f"✅ **Predicted Damage Class:** {prediction}")
+
+            # Damage localization
+            boxed_frame = draw_damage_box(frame_path)
+            st.markdown("### 📍 Damage Localization (Frame)")
+            st.image(boxed_frame, channels="BGR", use_container_width=True)
 
             os.remove(frame_path)
 
@@ -134,8 +188,3 @@ st.markdown(
     "Demo Project | Deep Learning • Computer Vision • Streamlit</p>",
     unsafe_allow_html=True
 )
-
-
-
-
-

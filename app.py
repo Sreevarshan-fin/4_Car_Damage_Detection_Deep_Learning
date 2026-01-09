@@ -52,14 +52,21 @@ with st.sidebar:
     st.success("🟢 Model Loaded")
 
 # --------------------------------------------------
-# Damage Localization (Bounding Box - Demo)
+# Damage Localization (Green Bounding Box)
 # --------------------------------------------------
 def draw_damage_box(image_path):
     img = cv2.imread(image_path)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
+    # Noise reduction
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+
     # Edge detection
-    edges = cv2.Canny(gray, 50, 150)
+    edges = cv2.Canny(blurred, 50, 150)
+
+    # Strengthen edges
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+    edges = cv2.dilate(edges, kernel, iterations=1)
 
     # Find contours
     contours, _ = cv2.findContours(
@@ -69,27 +76,26 @@ def draw_damage_box(image_path):
     if not contours:
         return img
 
-    # Largest contour assumed as damage area
-    largest_contour = max(contours, key=cv2.contourArea)
+    # Filter noise contours
+    image_area = img.shape[0] * img.shape[1]
+    valid_contours = [
+        c for c in contours if cv2.contourArea(c) > 0.01 * image_area
+    ]
+
+    if not valid_contours:
+        return img
+
+    # Largest contour → damage region
+    largest_contour = max(valid_contours, key=cv2.contourArea)
     x, y, w, h = cv2.boundingRect(largest_contour)
 
-    # Draw bounding box
+    # Draw GREEN box (no text)
     cv2.rectangle(
         img,
         (x, y),
         (x + w, y + h),
-        (0, 0, 255),
-        2
-    )
-
-    cv2.putText(
-        img,
-        "Detected Damage Area",
-        (x, y - 10),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.6,
-        (0, 0, 255),
-        2
+        (0, 255, 0),
+        3
     )
 
     return img
@@ -125,7 +131,6 @@ if upload_type == "📷 Image":
 
         st.success(f"✅ **Predicted Damage Class:** {prediction}")
 
-        # Damage localization
         boxed_image = draw_damage_box(image_path)
         st.markdown("### 📍 Damage Localization")
         st.image(boxed_image, channels="BGR", use_container_width=True)
@@ -145,12 +150,10 @@ if upload_type == "🎥 Video":
         st.markdown("### 🎬 Uploaded Video")
         st.video(uploaded_video)
 
-        # Save video temporarily
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_video:
             tmp_video.write(uploaded_video.getbuffer())
             video_path = tmp_video.name
 
-        # Extract middle frame
         cap = cv2.VideoCapture(video_path)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         middle_frame = total_frames // 2
@@ -170,9 +173,8 @@ if upload_type == "🎥 Video":
 
             st.success(f"✅ **Predicted Damage Class:** {prediction}")
 
-            # Damage localization
             boxed_frame = draw_damage_box(frame_path)
-            st.markdown("### 📍 Damage Localization (Frame)")
+            st.markdown("### 📍 Damage Localization")
             st.image(boxed_frame, channels="BGR", use_container_width=True)
 
             os.remove(frame_path)

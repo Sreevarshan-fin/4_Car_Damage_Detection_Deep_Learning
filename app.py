@@ -2,6 +2,7 @@ import streamlit as st
 import cv2
 import os
 import tempfile
+import numpy as np
 from model_helper import predict
 
 # --------------------------------------------------
@@ -21,7 +22,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 st.markdown(
-    "<p style='text-align: center; color: gray;'>Upload an image or a short video to detect vehicle damage</p>",
+    "<p style='text-align: center; color: gray;'>Upload a vehicle image or short video</p>",
     unsafe_allow_html=True
 )
 
@@ -34,21 +35,47 @@ with st.sidebar:
     st.header("ℹ️ About")
     st.write(
         """
-        Deep Learning based **Vehicle Damage Detection**
-        using **ResNet-50**.
+        **Vehicle Damage Classification System**
+
+        - Model: **ResNet-50 (Image Classifier)**
+        - Task: **Damage classification**
+        - Validation: **Image sanity check**
         """
     )
-    st.markdown("**Supported Classes:**")
-    st.markdown(
-        """
-        - Front Breakage  
-        - Front Crushed  
-        - Front Normal  
-        - Rear Breakage  
-        - Rear Crushed  
-        - Rear Normal  
-        """
-    )
+    st.success("🟢 App Ready")
+
+# --------------------------------------------------
+# VEHICLE VALIDATION (NO CASCADE, NO BOX)
+# --------------------------------------------------
+def is_likely_car(image_path):
+    """
+    Lightweight heuristic to block non-car images.
+    This is NOT detection — only validation.
+    """
+    img = cv2.imread(image_path)
+    if img is None:
+        return False
+
+    h, w, _ = img.shape
+
+    # Rule 1: minimum resolution
+    if h < 200 or w < 200:
+        return False
+
+    # Rule 2: cars are usually wider than tall
+    aspect_ratio = w / h
+    if aspect_ratio < 0.8 or aspect_ratio > 3.0:
+        return False
+
+    # Rule 3: cars have structural edges
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    edges = cv2.Canny(gray, 50, 150)
+    edge_ratio = np.mean(edges > 0)
+
+    if edge_ratio < 0.02:
+        return False
+
+    return True
 
 # --------------------------------------------------
 # Upload Type Selector
@@ -63,7 +90,7 @@ upload_type = st.radio(
 # --------------------------------------------------
 if upload_type == "📷 Image":
     uploaded_image = st.file_uploader(
-        "Upload an image",
+        "Upload a vehicle image",
         type=["jpg", "png", "jpeg"]
     )
 
@@ -76,19 +103,23 @@ if upload_type == "📷 Image":
         st.markdown("### 🖼️ Uploaded Image")
         st.image(uploaded_image, use_container_width=True)
 
-        with st.spinner("🔍 Analyzing image..."):
-            prediction = predict(image_path)
+        # ✅ VALIDATION
+        if not is_likely_car(image_path):
+            st.error("❌ Invalid image. Please upload a clear vehicle image.")
+            os.remove(image_path)
+        else:
+            with st.spinner("🔍 Analyzing damage..."):
+                prediction = predict(image_path)
 
-        st.success(f"✅ **Predicted Damage Class:** {prediction}")
-
-        os.remove(image_path)
+            st.success(f"✅ **Predicted Damage Class:** {prediction}")
+            os.remove(image_path)
 
 # --------------------------------------------------
 # VIDEO UPLOAD
 # --------------------------------------------------
 if upload_type == "🎥 Video":
     uploaded_video = st.file_uploader(
-        "Upload a short video (≤45 sec, ~1MB)",
+        "Upload a short vehicle video (≤45 sec)",
         type=["mp4", "mov", "avi"]
     )
 
@@ -96,16 +127,15 @@ if upload_type == "🎥 Video":
         st.markdown("### 🎬 Uploaded Video")
         st.video(uploaded_video)
 
-        # Save video temporarily
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_video:
             tmp_video.write(uploaded_video.getbuffer())
             video_path = tmp_video.name
 
-        # Extract middle frame
         cap = cv2.VideoCapture(video_path)
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        middle_frame = total_frames // 2
-        cap.set(cv2.CAP_PROP_POS_FRAMES, middle_frame)
+        cap.set(
+            cv2.CAP_PROP_POS_FRAMES,
+            int(cap.get(cv2.CAP_PROP_FRAME_COUNT) // 2)
+        )
         ret, frame = cap.read()
         cap.release()
 
@@ -113,13 +143,17 @@ if upload_type == "🎥 Video":
             frame_path = "temp_frame.jpg"
             cv2.imwrite(frame_path, frame)
 
-            st.markdown("### 🖼️ Extracted Frame (Used for Prediction)")
+            st.markdown("### 🖼️ Extracted Frame")
             st.image(frame_path, use_container_width=True)
 
-            with st.spinner("🔍 Analyzing video frame..."):
-                prediction = predict(frame_path)
+            # ✅ VALIDATION
+            if not is_likely_car(frame_path):
+                st.error("❌ Invalid frame. No clear vehicle detected.")
+            else:
+                with st.spinner("🔍 Analyzing damage..."):
+                    prediction = predict(frame_path)
 
-            st.success(f"✅ **Predicted Damage Class:** {prediction}")
+                st.success(f"✅ **Predicted Damage Class:** {prediction}")
 
             os.remove(frame_path)
 
@@ -134,6 +168,7 @@ st.markdown(
     "Demo Project | Deep Learning • Computer Vision • Streamlit</p>",
     unsafe_allow_html=True
 )
+
 
 
 

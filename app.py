@@ -2,6 +2,7 @@ import streamlit as st
 import cv2
 import os
 import tempfile
+import numpy as np
 from model_helper import predict
 
 # ---------------- PAGE CONFIG ----------------
@@ -16,40 +17,47 @@ st.markdown("<h1 style='text-align:center;'>🚗 Vehicle Damage Detection</h1>",
 st.markdown("<p style='text-align:center;color:gray;'>Upload a vehicle image or video</p>", unsafe_allow_html=True)
 st.divider()
 
-# ---------------- LOAD CAR VALIDATOR ----------------
-CASCADE_PATH = "haarcascade_car.xml"
-CAR_CASCADE = cv2.CascadeClassifier(CASCADE_PATH)
-
-if CAR_CASCADE.empty():
-    st.error("❌ Car validation model not found.")
-    st.stop()
-
-def is_car_image(image_path):
-    """Returns True if a car is detected, else False"""
+# ---------------- SIMPLE VEHICLE VALIDATION ----------------
+def is_likely_vehicle(image_path):
+    """
+    Lightweight heuristic:
+    - Rejects icons, logos, text images
+    - Allows most real vehicle photos
+    """
     img = cv2.imread(image_path)
     if img is None:
         return False
 
+    h, w, _ = img.shape
+
+    # Rule 1: size
+    if h < 200 or w < 200:
+        return False
+
+    # Rule 2: aspect ratio (cars are wider)
+    ratio = w / h
+    if ratio < 0.8 or ratio > 3.0:
+        return False
+
+    # Rule 3: edge density (cars have structure)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    edges = cv2.Canny(gray, 50, 150)
+    edge_ratio = np.mean(edges > 0)
 
-    cars = CAR_CASCADE.detectMultiScale(
-        gray,
-        scaleFactor=1.1,
-        minNeighbors=4,
-        minSize=(120, 120)
-    )
+    if edge_ratio < 0.02:
+        return False
 
-    return len(cars) > 0
+    return True
 
 # ---------------- SIDEBAR ----------------
 with st.sidebar:
     st.header("ℹ️ About")
     st.write("""
-    - **Model:** ResNet-50 (Image Classification)
-    - **Validation:** Car presence check
-    - **Task:** Damage classification only
+    - Model: **ResNet-50 (Classifier)**
+    - Task: **Damage classification**
+    - Validation: **Image sanity check**
     """)
-    st.success("🟢 System Ready")
+    st.success("🟢 Ready")
 
 # ---------------- INPUT TYPE ----------------
 upload_type = st.radio("Select input type", ["📷 Image", "🎥 Video"])
@@ -67,8 +75,8 @@ if upload_type == "📷 Image":
 
         st.image(uploaded_image, caption="Uploaded Image", use_container_width=True)
 
-        # ✅ VALIDATION ONLY
-        if not is_car_image(image_path):
+        # ✅ VALIDATION
+        if not is_likely_vehicle(image_path):
             st.error("❌ Invalid image. Please upload a vehicle image.")
             os.remove(image_path)
         else:
@@ -100,8 +108,8 @@ if upload_type == "🎥 Video":
             frame_path = "temp_frame.jpg"
             cv2.imwrite(frame_path, frame)
 
-            if not is_car_image(frame_path):
-                st.error("❌ No vehicle detected in video.")
+            if not is_likely_vehicle(frame_path):
+                st.error("❌ Invalid video frame. No clear vehicle detected.")
             else:
                 with st.spinner("🔍 Analyzing damage..."):
                     prediction = predict(frame_path)
@@ -118,6 +126,7 @@ st.markdown(
     "<p style='text-align:center;color:gray;'>Deep Learning • Computer Vision • Streamlit</p>",
     unsafe_allow_html=True
 )
+
 
 
 

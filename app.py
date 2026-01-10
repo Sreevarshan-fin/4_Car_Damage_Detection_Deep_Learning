@@ -16,18 +16,27 @@ st.markdown("<h1 style='text-align:center;'>🚗 Vehicle Damage Detection</h1>",
 st.markdown("<p style='text-align:center;color:gray;'>Upload a vehicle image or video</p>", unsafe_allow_html=True)
 st.divider()
 
-# ---------------- LOAD CAR DETECTOR ----------------
-CAR_CASCADE = cv2.CascadeClassifier("haarcascade_car.xml")
+# ---------------- LOAD CAR DETECTOR (SAFE) ----------------
+CASCADE_PATH = "haarcascade_car.xml"
+CAR_CASCADE = cv2.CascadeClassifier(CASCADE_PATH)
+
+if CAR_CASCADE.empty():
+    st.error("❌ Car detector file not found or failed to load.")
+    st.stop()
 
 def detect_car(image_path):
     img = cv2.imread(image_path)
+
+    if img is None:
+        return None, []
+
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
     cars = CAR_CASCADE.detectMultiScale(
         gray,
         scaleFactor=1.1,
-        minNeighbors=3,
-        minSize=(100, 100)
+        minNeighbors=4,
+        minSize=(120, 120)
     )
 
     return img, cars
@@ -37,8 +46,8 @@ with st.sidebar:
     st.header("ℹ️ About")
     st.write("""
     - Model: **ResNet-50 (Classifier)**
-    - Detection: **Haar Cascade**
-    - Damage localization is **car-level**
+    - Vehicle detection: **Haar Cascade**
+    - Damage localization: **Car-level only**
     """)
     st.success("🟢 System Ready")
 
@@ -60,13 +69,12 @@ if upload_type == "📷 Image":
 
         img, cars = detect_car(image_path)
 
-        if len(cars) == 0:
-            st.error("❌ No vehicle detected. Please upload a car image.")
+        if img is None or len(cars) == 0:
+            st.error("❌ No vehicle detected. Please upload a clear car image.")
             os.remove(image_path)
         else:
-            # Draw GREEN boxes
             for (x, y, w, h) in cars:
-                cv2.rectangle(img, (x, y), (x+w, y+h), (0,255,0), 3)
+                cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 3)
 
             st.markdown("### 📍 Vehicle Detection")
             st.image(img, channels="BGR", use_container_width=True)
@@ -91,7 +99,7 @@ if upload_type == "🎥 Video":
             video_path = tmp.name
 
         cap = cv2.VideoCapture(video_path)
-        cap.set(cv2.CAP_PROP_POS_FRAMES, int(cap.get(cv2.CAP_PROP_FRAME_COUNT)//2))
+        cap.set(cv2.CAP_PROP_POS_FRAMES, int(cap.get(cv2.CAP_PROP_FRAME_COUNT) // 2))
         ret, frame = cap.read()
         cap.release()
 
@@ -101,11 +109,11 @@ if upload_type == "🎥 Video":
 
             img, cars = detect_car(frame_path)
 
-            if len(cars) == 0:
+            if img is None or len(cars) == 0:
                 st.error("❌ No vehicle detected in video.")
             else:
-                for (x,y,w,h) in cars:
-                    cv2.rectangle(img,(x,y),(x+w,y+h),(0,255,0),3)
+                for (x, y, w, h) in cars:
+                    cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 3)
 
                 st.image(img, channels="BGR", caption="Detected Vehicle")
 
@@ -113,11 +121,16 @@ if upload_type == "🎥 Video":
                 st.success(f"✅ **Predicted Damage Class:** {prediction}")
 
             os.remove(frame_path)
+
         os.remove(video_path)
 
 # ---------------- FOOTER ----------------
 st.divider()
-st.markdown("<p style='text-align:center;color:gray;'>Deep Learning • Computer Vision • Streamlit</p>", unsafe_allow_html=True)
+st.markdown(
+    "<p style='text-align:center;color:gray;'>Deep Learning • Computer Vision • Streamlit</p>",
+    unsafe_allow_html=True
+)
+
 
 
 

@@ -53,33 +53,41 @@ with st.sidebar:
         """
     )
 
-    st.info("✔ Car validation enabled")
     st.success("🟢 Model Loaded")
 
 # --------------------------------------------------
-# CAR VALIDATION (IMPORTANT FIX)
+# SOFT CAR VALIDATION (FIXED)
 # --------------------------------------------------
-def is_likely_car(image_path):
+def car_validation_score(image_path):
     """
-    Simple heuristic to reject non-car images.
-    Prevents meaningless predictions on logos, icons, etc.
+    Returns a confidence score (0–1) indicating
+    likelihood of a vehicle being present.
     """
     img = cv2.imread(image_path)
     if img is None:
-        return False
+        return 0.0
 
     h, w, _ = img.shape
+    score = 0.0
 
-    # Rule 1: resolution check
-    if h < 200 or w < 200:
-        return False
+    # Size check
+    if h > 200 and w > 200:
+        score += 0.4
 
-    # Rule 2: car images are usually wider than tall
+    # Aspect ratio (loose)
     aspect_ratio = w / h
-    if aspect_ratio < 1.1:
-        return False
+    if 0.7 < aspect_ratio < 2.5:
+        score += 0.4
 
-    return True
+    # Edge density (cars have many edges)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    edges = cv2.Canny(gray, 50, 150)
+    edge_density = edges.mean() / 255
+
+    if edge_density > 0.02:
+        score += 0.2
+
+    return score
 
 # --------------------------------------------------
 # Upload Type Selector
@@ -107,22 +115,26 @@ if upload_type == "📷 Image":
         st.markdown("### 🖼️ Uploaded Image")
         st.image(uploaded_image, use_container_width=True)
 
-        # 🔒 CAR VALIDATION
-        if not is_likely_car(image_path):
-            st.error("❌ Uploaded image does not appear to be a vehicle.")
-            os.remove(image_path)
-        else:
-            with st.spinner("🔍 Analyzing image..."):
-                prediction = predict(image_path)
+        # 🔍 Soft validation
+        score = car_validation_score(image_path)
 
-            st.success(f"✅ **Predicted Damage Class:** {prediction}")
-
+        if score < 0.4:
             st.warning(
-                "⚠️ Damage localization is not shown because the model "
-                "is a classifier. Accurate localization requires object detection models."
+                "⚠️ The uploaded image may not clearly contain a vehicle. "
+                "Prediction may be unreliable."
             )
 
-            os.remove(image_path)
+        with st.spinner("🔍 Analyzing image..."):
+            prediction = predict(image_path)
+
+        st.success(f"✅ **Predicted Damage Class:** {prediction}")
+
+        st.info(
+            "ℹ️ Damage localization is not shown because the model "
+            "is a classifier. Accurate localization requires object detection models."
+        )
+
+        os.remove(image_path)
 
 # --------------------------------------------------
 # VIDEO UPLOAD
@@ -141,7 +153,6 @@ if upload_type == "🎥 Video":
             tmp_video.write(uploaded_video.getbuffer())
             video_path = tmp_video.name
 
-        # Extract middle frame
         cap = cv2.VideoCapture(video_path)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         middle_frame = total_frames // 2
@@ -156,19 +167,17 @@ if upload_type == "🎥 Video":
             st.markdown("### 🖼️ Extracted Frame")
             st.image(frame_path, use_container_width=True)
 
-            # 🔒 CAR VALIDATION
-            if not is_likely_car(frame_path):
-                st.error("❌ Video frame does not appear to contain a vehicle.")
-            else:
-                with st.spinner("🔍 Analyzing video frame..."):
-                    prediction = predict(frame_path)
+            score = car_validation_score(frame_path)
 
-                st.success(f"✅ **Predicted Damage Class:** {prediction}")
-
+            if score < 0.4:
                 st.warning(
-                    "⚠️ Damage localization is not shown because the model "
-                    "is a classifier."
+                    "⚠️ The video frame may not clearly show a vehicle."
                 )
+
+            with st.spinner("🔍 Analyzing video frame..."):
+                prediction = predict(frame_path)
+
+            st.success(f"✅ **Predicted Damage Class:** {prediction}")
 
             os.remove(frame_path)
 
@@ -183,6 +192,8 @@ st.markdown(
     "Demo Project | Deep Learning • Computer Vision • Streamlit</p>",
     unsafe_allow_html=True
 )
+
+
 
 
 

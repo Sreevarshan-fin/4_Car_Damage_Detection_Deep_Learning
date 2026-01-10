@@ -21,7 +21,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 st.markdown(
-    "<p style='text-align: center; color: gray;'>Upload an image or a short video to detect vehicle damage</p>",
+    "<p style='text-align: center; color: gray;'>Upload a vehicle image or video to detect damage</p>",
     unsafe_allow_html=True
 )
 
@@ -34,10 +34,13 @@ with st.sidebar:
     st.header("ℹ️ About")
     st.write(
         """
-        Deep Learning based **Vehicle Damage Detection**
-        using **ResNet-50**.
+        This application uses a **deep learning classification model (ResNet-50)**  
+        to identify **vehicle damage types**.
+
+        ⚠️ The model performs **classification**, not object detection.
         """
     )
+
     st.markdown("**Supported Classes:**")
     st.markdown(
         """
@@ -49,61 +52,34 @@ with st.sidebar:
         - Rear Normal  
         """
     )
+
+    st.info("✔ Car validation enabled")
     st.success("🟢 Model Loaded")
 
 # --------------------------------------------------
-# Damage Localization (Green Bounding Box)
+# CAR VALIDATION (IMPORTANT FIX)
 # --------------------------------------------------
-def draw_damage_box(image_path):
+def is_likely_car(image_path):
+    """
+    Simple heuristic to reject non-car images.
+    Prevents meaningless predictions on logos, icons, etc.
+    """
     img = cv2.imread(image_path)
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-    # Reduce noise
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-
-    # Edge detection
-    edges = cv2.Canny(blurred, 60, 160)
-
-    # Strengthen edges slightly
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-    edges = cv2.dilate(edges, kernel, iterations=1)
-
-    # Find contours
-    contours, _ = cv2.findContours(
-        edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-    )
-
-    if not contours:
-        return img
+    if img is None:
+        return False
 
     h, w, _ = img.shape
-    image_area = h * w
 
-    # ✅ Filter contours by realistic damage size
-    valid_contours = []
-    for c in contours:
-        area = cv2.contourArea(c)
-        if 0.01 * image_area < area < 0.35 * image_area:
-            valid_contours.append(c)
+    # Rule 1: resolution check
+    if h < 200 or w < 200:
+        return False
 
-    if not valid_contours:
-        return img
+    # Rule 2: car images are usually wider than tall
+    aspect_ratio = w / h
+    if aspect_ratio < 1.1:
+        return False
 
-    # Choose most prominent damage-like region
-    best_contour = max(valid_contours, key=cv2.contourArea)
-    x, y, bw, bh = cv2.boundingRect(best_contour)
-
-    # Draw GREEN bounding box
-    cv2.rectangle(
-        img,
-        (x, y),
-        (x + bw, y + bh),
-        (0, 255, 0),
-        3
-    )
-
-    return img
-
+    return True
 
 # --------------------------------------------------
 # Upload Type Selector
@@ -118,7 +94,7 @@ upload_type = st.radio(
 # --------------------------------------------------
 if upload_type == "📷 Image":
     uploaded_image = st.file_uploader(
-        "Upload an image",
+        "Upload a vehicle image",
         type=["jpg", "png", "jpeg"]
     )
 
@@ -131,23 +107,29 @@ if upload_type == "📷 Image":
         st.markdown("### 🖼️ Uploaded Image")
         st.image(uploaded_image, use_container_width=True)
 
-        with st.spinner("🔍 Analyzing image..."):
-            prediction = predict(image_path)
+        # 🔒 CAR VALIDATION
+        if not is_likely_car(image_path):
+            st.error("❌ Uploaded image does not appear to be a vehicle.")
+            os.remove(image_path)
+        else:
+            with st.spinner("🔍 Analyzing image..."):
+                prediction = predict(image_path)
 
-        st.success(f"✅ **Predicted Damage Class:** {prediction}")
+            st.success(f"✅ **Predicted Damage Class:** {prediction}")
 
-        boxed_image = draw_damage_box(image_path)
-        st.markdown("### 📍 Damage Localization")
-        st.image(boxed_image, channels="BGR", use_container_width=True)
+            st.warning(
+                "⚠️ Damage localization is not shown because the model "
+                "is a classifier. Accurate localization requires object detection models."
+            )
 
-        os.remove(image_path)
+            os.remove(image_path)
 
 # --------------------------------------------------
 # VIDEO UPLOAD
 # --------------------------------------------------
 if upload_type == "🎥 Video":
     uploaded_video = st.file_uploader(
-        "Upload a short video (≤45 sec, ~1MB)",
+        "Upload a short vehicle video (≤45 sec)",
         type=["mp4", "mov", "avi"]
     )
 
@@ -159,6 +141,7 @@ if upload_type == "🎥 Video":
             tmp_video.write(uploaded_video.getbuffer())
             video_path = tmp_video.name
 
+        # Extract middle frame
         cap = cv2.VideoCapture(video_path)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         middle_frame = total_frames // 2
@@ -173,14 +156,19 @@ if upload_type == "🎥 Video":
             st.markdown("### 🖼️ Extracted Frame")
             st.image(frame_path, use_container_width=True)
 
-            with st.spinner("🔍 Analyzing video frame..."):
-                prediction = predict(frame_path)
+            # 🔒 CAR VALIDATION
+            if not is_likely_car(frame_path):
+                st.error("❌ Video frame does not appear to contain a vehicle.")
+            else:
+                with st.spinner("🔍 Analyzing video frame..."):
+                    prediction = predict(frame_path)
 
-            st.success(f"✅ **Predicted Damage Class:** {prediction}")
+                st.success(f"✅ **Predicted Damage Class:** {prediction}")
 
-            boxed_frame = draw_damage_box(frame_path)
-            st.markdown("### 📍 Damage Localization")
-            st.image(boxed_frame, channels="BGR", use_container_width=True)
+                st.warning(
+                    "⚠️ Damage localization is not shown because the model "
+                    "is a classifier."
+                )
 
             os.remove(frame_path)
 
@@ -195,4 +183,6 @@ st.markdown(
     "Demo Project | Deep Learning • Computer Vision • Streamlit</p>",
     unsafe_allow_html=True
 )
+
+
 

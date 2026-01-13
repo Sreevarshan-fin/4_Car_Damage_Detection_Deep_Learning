@@ -106,12 +106,27 @@ Because of this strong and consistent performance, **ResNet was selected as the 
 
 ---
 
-## **Final Outcome**
+#  **Final Outcome**
 
 * Designed and evaluated multiple deep learning models for car damage detection
 * Compared baseline CNNs with advanced transfer learning approaches
 * Selected **ResNet as the final model because it met the accuracy requirement and performed most consistently**
 * Integrated the model into a **Streamlit application** for real-time image upload and prediction
 * Delivered a **scalable, production-ready POC** demonstrating clear business value
+
+
+## **Demo**
+
+**Front Crushed**
+
+<img width="1033" height="757" alt="image" src="https://github.com/user-attachments/assets/0c24b8b2-6951-4f8d-af03-d0c7e8429d3d" />
+
+-----------------------
+
+**Rear Crushed**
+
+<img width="1017" height="707" alt="image" src="https://github.com/user-attachments/assets/acc26a78-fb94-4b67-a69a-1fc68090c5a4" />
+
+--------------
 
 
